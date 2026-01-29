@@ -1,134 +1,231 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <title>Snake Game</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Snake Forêt 3D</title>
 
-    <style>
-        body {
-            background-color: #111;
-            color: white;
-            font-family: Arial, sans-serif;
-            text-align: center;
-        }
+<style>
+html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+    background: #000;
+}
 
-        h1 {
-            margin-top: 20px;
-        }
+/* Fond forêt */
+body {
+    background: linear-gradient(#0b3d1a, #021a0c);
+}
 
-        canvas {
-            background-color: black;
-            border: 3px solid #4caf50;
-            margin-top: 20px;
-        }
+/* UI */
+#ui {
+    position: absolute;
+    top: 10px;
+    width: 100%;
+    text-align: center;
+    color: #fff;
+    font-size: 18px;
+    z-index: 2;
+}
 
-        #score {
-            font-size: 20px;
-            margin-top: 10px;
-        }
-    </style>
+/* Canvas */
+canvas {
+    display: block;
+    margin: auto;
+    background:
+        radial-gradient(circle at top, rgba(255,255,255,0.05), transparent),
+        repeating-linear-gradient(
+            45deg,
+            rgba(0,0,0,0.05),
+            rgba(0,0,0,0.05) 10px,
+            rgba(255,255,255,0.02) 10px,
+            rgba(255,255,255,0.02) 20px
+        );
+}
+
+/* Boutons directionnels */
+#controls {
+    position: absolute;
+    bottom: 20px;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    z-index: 2;
+}
+
+.control-btn {
+    width: 65px;
+    height: 65px;
+    border-radius: 50%;
+    border: none;
+    font-size: 26px;
+    background: radial-gradient(circle at top, #3cff8f, #0a7a3f);
+    color: #003d1f;
+    box-shadow: inset 0 4px 8px rgba(255,255,255,0.3),
+                0 6px 15px rgba(0,0,0,0.6);
+}
+
+.control-btn:active {
+    transform: scale(0.95);
+}
+
+/* Game Over */
+#gameOver {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    color: white;
+    z-index: 3;
+}
+
+#gameOver button {
+    margin-top: 20px;
+    padding: 14px 30px;
+    font-size: 18px;
+    background: #3cff8f;
+    border: none;
+    border-radius: 30px;
+}
+</style>
 </head>
 
 <body>
 
-<h1>🐍 Snake Game</h1>
-<p>Utilise les flèches du clavier ⬅️ ⬆️ ➡️ ⬇️</p>
-<div id="score">Score : 0</div>
+<div id="ui">
+    🏆 Best: <span id="best">0</span> | 🍌 Score: <span id="score">0</span>
+</div>
 
-<canvas id="game" width="400" height="400"></canvas>
+<canvas id="game"></canvas>
+
+<div id="gameOver">
+    <h1>💀 Game Over</h1>
+    <button onclick="restart()">🔄 Rejouer</button>
+</div>
+
+<div id="controls">
+    <button class="control-btn" onclick="setDir(0,-1)">⬆️</button>
+    <button class="control-btn" onclick="setDir(-1,0)">⬅️</button>
+    <button class="control-btn" onclick="setDir(1,0)">➡️</button>
+    <button class="control-btn" onclick="setDir(0,1)">⬇️</button>
+</div>
 
 <script>
-    const canvas = document.getElementById("game");
-    const ctx = canvas.getContext("2d");
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
 
-    const box = 20;
-    let score = 0;
+function resize(){
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener("resize", resize);
 
-    let snake = [
-        { x: 9 * box, y: 10 * box }
-    ];
+const box = 24;
+let snake, food, dx, dy, score, running;
 
-    let food = {
-        x: Math.floor(Math.random() * 19) * box,
-        y: Math.floor(Math.random() * 19) * box
+let best = localStorage.getItem("snakeForestBest") || 0;
+document.getElementById("best").innerText = best;
+
+function init(){
+    snake = [{x:10, y:10}];
+    food = spawnFood();
+    dx = 1; dy = 0;
+    score = 0;
+    running = true;
+    document.getElementById("score").innerText = score;
+    document.getElementById("gameOver").style.display = "none";
+}
+init();
+
+function spawnFood(){
+    return {
+        x: Math.floor(Math.random() * (canvas.width / box)),
+        y: Math.floor(Math.random() * (canvas.height / box))
     };
+}
 
-    let direction = "RIGHT";
+function setDir(x,y){
+    if(dx === -x && dy === -y) return;
+    dx = x; dy = y;
+}
 
-    document.addEventListener("keydown", directionControl);
+function drawSnakePart(x,y,i){
+    let px = x * box;
+    let py = y * box;
 
-    function directionControl(event) {
-        if (event.keyCode == 37 && direction != "RIGHT") {
-            direction = "LEFT";
-        } else if (event.keyCode == 38 && direction != "DOWN") {
-            direction = "UP";
-        } else if (event.keyCode == 39 && direction != "LEFT") {
-            direction = "RIGHT";
-        } else if (event.keyCode == 40 && direction != "UP") {
-            direction = "DOWN";
-        }
+    let grad = ctx.createLinearGradient(px, py, px, py + box);
+    grad.addColorStop(0, i===0 ? "#7dffb0" : "#2ecc71");
+    grad.addColorStop(1, "#0a5c2f");
+
+    ctx.fillStyle = grad;
+    ctx.shadowColor = "#00ff88";
+    ctx.shadowBlur = i === 0 ? 15 : 6;
+    ctx.fillRect(px, py, box, box);
+
+    ctx.strokeStyle = "rgba(0,0,0,0.3)";
+    ctx.strokeRect(px, py, box, box);
+}
+
+function drawBanana(x,y){
+    ctx.font = `${box}px serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = "yellow";
+    ctx.shadowBlur = 15;
+    ctx.fillText("🍌", x*box + box/2, y*box + box/2);
+}
+
+function update(){
+    if(!running) return;
+
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    snake.forEach((p,i)=> drawSnakePart(p.x,p.y,i));
+    drawBanana(food.x, food.y);
+
+    let head = {x: snake[0].x + dx, y: snake[0].y + dy};
+
+    if(head.x < 0 || head.y < 0 ||
+       head.x*box > canvas.width ||
+       head.y*box > canvas.height ||
+       snake.some(p => p.x===head.x && p.y===head.y)){
+        gameOver();
+        return;
     }
 
-    function drawGame() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    snake.unshift(head);
 
-        for (let i = 0; i < snake.length; i++) {
-            ctx.fillStyle = (i == 0) ? "#4caf50" : "white";
-            ctx.fillRect(snake[i].x, snake[i].y, box, box);
-            ctx.strokeStyle = "#111";
-            ctx.strokeRect(snake[i].x, snake[i].y, box, box);
-        }
-
-        ctx.fillStyle = "red";
-        ctx.fillRect(food.x, food.y, box, box);
-
-        let snakeX = snake[0].x;
-        let snakeY = snake[0].y;
-
-        if (direction == "LEFT") snakeX -= box;
-        if (direction == "UP") snakeY -= box;
-        if (direction == "RIGHT") snakeX += box;
-        if (direction == "DOWN") snakeY += box;
-
-        if (snakeX == food.x && snakeY == food.y) {
-            score++;
-            document.getElementById("score").innerHTML = "Score : " + score;
-
-            food = {
-                x: Math.floor(Math.random() * 19) * box,
-                y: Math.floor(Math.random() * 19) * box
-            };
-        } else {
-            snake.pop();
-        }
-
-        let newHead = {
-            x: snakeX,
-            y: snakeY
-        };
-
-        if (
-            snakeX < 0 || snakeY < 0 ||
-            snakeX >= canvas.width || snakeY >= canvas.height ||
-            collision(newHead, snake)
-        ) {
-            clearInterval(game);
-            alert("Game Over 😵\nScore : " + score);
-        }
-
-        snake.unshift(newHead);
+    if(head.x === food.x && head.y === food.y){
+        score++;
+        document.getElementById("score").innerText = score;
+        food = spawnFood();
+    } else {
+        snake.pop();
     }
+}
 
-    function collision(head, array) {
-        for (let i = 0; i < array.length; i++) {
-            if (head.x == array[i].x && head.y == array[i].y) {
-                return true;
-            }
-        }
-        return false;
+function gameOver(){
+    running = false;
+    document.getElementById("gameOver").style.display = "flex";
+    if(score > best){
+        best = score;
+        localStorage.setItem("snakeForestBest", best);
+        document.getElementById("best").innerText = best;
     }
+}
 
-    let game = setInterval(drawGame, 150);
+function restart(){
+    init();
+}
+
+setInterval(update, 120);
 </script>
 
 </body>
